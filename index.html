@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Doolhof — vind de uitgang</title>
+<style>
+:root{color-scheme:dark;--ink:#f4f0e8;--muted:#a8b5b2;--bg:#101a1b;--panel:#182526;--wall:#d9e5d8;--floor:#263536;--accent:#e89c59;--player:#f2bb64;--exit:#8ed0a0}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% -20%,#344849 0,#101a1b 60%);color:var(--ink);font:16px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;display:grid;place-items:center;padding:18px}
+main{width:min(100%,650px);text-align:center}.eyebrow{font-size:.73rem;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);font-weight:800;margin:2px 0 5px}h1{font-family:Georgia,serif;font-weight:500;font-size:clamp(2rem,7vw,3rem);margin:0 0 4px}.intro{color:var(--muted);margin:0 auto 16px;max-width:35em;font-size:.94rem}
+.bar{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}.pill{background:#1b2b2c;border:1px solid #385050;border-radius:99px;padding:7px 12px;font-size:.82rem;color:#d6e0d9}.pill b{color:#fff}.btn{border:0;border-radius:10px;padding:10px 15px;background:var(--accent);color:#24170d;font-weight:800;font-size:.9rem;cursor:pointer;box-shadow:0 3px 0 #9f6537}.btn:active{transform:translateY(2px);box-shadow:0 1px 0 #9f6537}.btn.secondary{background:#35494a;color:var(--ink);box-shadow:0 3px 0 #263637}.maze-wrap{width:min(92vw,560px);margin:auto;background:#0b1112;border:7px solid #344647;border-radius:13px;padding:5px;box-shadow:0 15px 38px #0008;touch-action:none}canvas{display:block;width:100%;height:auto;border-radius:4px;image-rendering:pixelated}.status{height:28px;margin:10px 0 1px;color:#c4d1c9;font-size:.94rem}.status.win{color:#9be0ae;font-weight:800}
+.controls{display:flex;align-items:center;justify-content:center;gap:18px;margin:10px 0 0}.dpad{display:grid;grid-template-columns:46px 46px 46px;grid-template-rows:40px 40px;gap:4px}.dpad button{border:1px solid #526565;background:#263637;color:#fff;border-radius:9px;font-size:1.05rem;touch-action:manipulation}.dpad button:active{background:#516a67}.up{grid-column:2}.left{grid-column:1;grid-row:2}.down{grid-column:2;grid-row:2}.right{grid-column:3;grid-row:2}.help{font-size:.79rem;color:#aab7b2;max-width:185px;text-align:left}.help strong{color:#e5ebe4}.footer{margin:12px 0 0;color:#71827f;font-size:.72rem}
+@media(min-width:600px){.controls{margin-top:8px}.dpad{opacity:.85}}
+</style></head>
+<body><main>
+<div class="eyebrow">Een klein avontuur</div><h1>Doolhof</h1><p class="intro">Verdwaal gerust. De uitgang wacht ergens aan de overkant.</p>
+<div class="bar"><span class="pill">⏱ <b id="time">00:00</b></span><span class="pill">Stappen <b id="steps">0</b></span><button id="new" class="btn">Nieuw doolhof ↻</button></div>
+<div class="maze-wrap"><canvas id="game" aria-label="Doolhofspel"></canvas></div><div class="status" id="status">Zoek de groene uitgang. Jij bent het gouden bolletje.</div>
+<div class="controls"><div class="dpad" aria-label="Bewegingsknoppen"><button class="up" data-dir="0,-1" aria-label="Omhoog">▲</button><button class="left" data-dir="-1,0" aria-label="Links">◀</button><button class="down" data-dir="0,1" aria-label="Omlaag">▼</button><button class="right" data-dir="1,0" aria-label="Rechts">▶</button></div><div class="help"><strong>Besturing</strong><br>Pijltjestoetsen of WASD.<br>Op tablet: tik op de pijlen.</div></div><p class="footer">Elke nieuwe start maakt een ander doolhof.</p>
+</main><script>
+(()=>{
+const N=17, canvas=document.getElementById('game'),ctx=canvas.getContext('2d'),timeEl=document.getElementById('time'),stepsEl=document.getElementById('steps'),statusEl=document.getElementById('status');
+let maze,px=1,py=1,steps=0,start=0,timer=null,won=false,cell=24;
+function fresh(){maze=Array.from({length:N},()=>Array(N).fill(1));const stack=[[1,1]];maze[1][1]=0;while(stack.length){const [x,y]=stack[stack.length-1],dirs=[[0,-2],[2,0],[0,2],[-2,0]].sort(()=>Math.random()-.5);let moved=false;for(const [dx,dy] of dirs){let nx=x+dx,ny=y+dy;if(nx>0&&ny>0&&nx<N-1&&ny<N-1&&maze[ny][nx]){maze[y+dy/2][x+dx/2]=0;maze[ny][nx]=0;stack.push([nx,ny]);moved=true;break}}if(!moved)stack.pop()}
+// Add a few loops so the route feels less like a single corridor.
+for(let i=0;i<15;i++){let x=1+Math.floor(Math.random()*(N-2)),y=1+Math.floor(Math.random()*(N-2));if(maze[y][x]&&((maze[y][x-1]===0&&maze[y][x+1]===0)||(maze[y-1][x]===0&&maze[y+1][x]===0)))maze[y][x]=0}
+maze[N-2][N-2]=0;px=1;py=1;steps=0;won=false;start=Date.now();stepsEl.textContent='0';statusEl.textContent='Zoek de groene uitgang. Jij bent het gouden bolletje.';statusEl.classList.remove('win');if(timer)clearInterval(timer);timer=setInterval(updateTime,250);fit();draw()}
+function updateTime(){let s=Math.floor((Date.now()-start)/1000);timeEl.textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+function fit(){const dpr=Math.min(devicePixelRatio||1,2),size=Math.min(560,Math.floor(innerWidth*.92));cell=Math.floor(size/N);canvas.width=cell*N*dpr;canvas.height=cell*N*dpr;canvas.style.width=(cell*N)+'px';canvas.style.height=(cell*N)+'px';ctx.setTransform(dpr,0,0,dpr,0,0)}
+function draw(){ctx.clearRect(0,0,cell*N,cell*N);for(let y=0;y<N;y++)for(let x=0;x<N;x++){ctx.fillStyle=maze[y][x]?'#d9e5d8':'#263536';ctx.fillRect(x*cell,y*cell,cell,cell);if(!maze[y][x]){ctx.fillStyle='rgba(255,255,255,.025)';ctx.fillRect(x*cell,y*cell,cell,cell)}}
+// Entrance and exit markers
+ctx.fillStyle='#e89c59';ctx.fillRect(cell*.15,cell*.15,cell*.7,cell*.7);ctx.fillStyle='#8ed0a0';ctx.fillRect((N-2)*cell+cell*.15,(N-2)*cell+cell*.15,cell*.7,cell*.7);
+ctx.beginPath();ctx.arc(px*cell+cell/2,py*cell+cell/2,cell*.32,0,Math.PI*2);ctx.fillStyle='#f2bb64';ctx.shadowColor='#f2bb64';ctx.shadowBlur=12;ctx.fill();ctx.shadowBlur=0;ctx.beginPath();ctx.arc(px*cell+cell*.39,py*cell+cell*.4,cell*.06,0,Math.PI*2);ctx.fillStyle='#47331b';ctx.fill();ctx.beginPath();ctx.arc(px*cell+cell*.61,py*cell+cell*.4,cell*.06,0,Math.PI*2);ctx.fill()}
+function move(dx,dy){if(won)return;let nx=px+dx,ny=py+dy;if(nx<0||ny<0||nx>=N||ny>=N||maze[ny][nx])return;px=nx;py=ny;steps++;stepsEl.textContent=steps;draw();if(px===N-2&&py===N-2){won=true;clearInterval(timer);updateTime();statusEl.textContent='Uit het doolhof! Mooi werk — nog eentje?';statusEl.classList.add('win')}}
+const map={ArrowUp:[0,-1],w:[0,-1],W:[0,-1],ArrowDown:[0,1],s:[0,1],S:[0,1],ArrowLeft:[-1,0],a:[-1,0],A:[-1,0],ArrowRight:[1,0],d:[1,0],D:[1,0]};addEventListener('keydown',e=>{if(map[e.key]){e.preventDefault();move(...map[e.key])}});document.querySelectorAll('[data-dir]').forEach(b=>b.addEventListener('pointerdown',e=>{e.preventDefault();move(...b.dataset.dir.split(',').map(Number))}));document.getElementById('new').addEventListener('click',fresh);addEventListener('resize',()=>{fit();draw()});fresh();
+})();
+</script></body></html>
