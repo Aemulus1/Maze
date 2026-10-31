@@ -4,7 +4,7 @@
 (()=>{'use strict';const N=20,S=50,canvas=document.getElementById('maze'),ctx=canvas.getContext('2d');const $=id=>document.getElementById(id),dirs=[[-1,0],[0,1],[1,0],[0,-1]],opp=[2,3,0,1];let cells,players,turn,steps,extra,ended,special,ladder,trampoline,route,dist,lock=false,rollVisited=new Set(),allowed;const idx=(r,c)=>r*N+c,rc=i=>[Math.floor(i/N),i%N],rand=n=>Math.floor(Math.random()*n),shuffle=a=>a.sort(()=>Math.random()-.5),neighbor=(i,d)=>{let[r,c]=rc(i);r+=dirs[d][0];c+=dirs[d][1];return r>=0&&r<N&&c>=0&&c<N?idx(r,c):-1};function edges(i){return [0,1,2,3].filter(d=>cells[i][d]).map(d=>neighbor(i,d))}function path(a,b){let q=[a],seen=new Set([a]),parent=new Map;for(let j=0;j<q.length;j++){let u=q[j];if(u===b)break;for(let v of edges(u))if(!seen.has(v)){seen.add(v);parent.set(v,u);q.push(v)}}if(!seen.has(b))return [];let out=[b];while(out[0]!==a)out.unshift(parent.get(out[0]));return out}function distances(goal){let out=Array(400).fill(Infinity),q=[goal];out[goal]=0;for(let j=0;j<q.length;j++)for(let v of edges(q[j]))if(out[v]===Infinity){out[v]=out[q[j]]+1;q.push(v)}return out}function create(){
 // Generate again until both shortcuts have a measurable net advantage.
 let attempts=0,choice=null;
-while(attempts++<600){
+while(attempts++<80){
  cells=Array.from({length:400},()=>[false,false,false,false]);
  let visited=new Set([0]),stack=[0];
  while(stack.length){let u=stack.at(-1),opts=[0,1,2,3].map(d=>[d,neighbor(u,d)]).filter(([d,v])=>v>=0&&!visited.has(v));if(!opts.length){stack.pop();continue}let[d,v]=opts[rand(opts.length)];cells[u][d]=true;cells[v][opp[d]]=true;visited.add(v);stack.push(v)}
@@ -35,6 +35,15 @@ while(attempts++<600){
    }
   }
  }
+ if(!ladders.length){
+  // Fallback: a ladder can bridge a wall to a later main-route cell;
+  // don't reject the entire maze when a 15-step adjacent shortcut is unavailable.
+  for(let b of branches){
+   if(b.depth<2||b.j+22>=route.length)continue;
+   let k=Math.min(3,b.depth),from=b.chain[k],to=route[b.j+22];
+   ladders.push({from,to,dir:-1,junction:b.j,depth:k,gain:22-k,branch:b.chain.slice(0,k+1)});
+  }
+ }
  if(!ladders.length)continue;
  shuffle(ladders);shuffle(trampOptions);
  let selected=null;
@@ -45,7 +54,7 @@ while(attempts++<600){
  if(!selected)continue;
  choice=selected;break;
 }
-if(!choice){say('Geen geschikt doolhof gevonden. Probeer opnieuw.');return}
+if(!choice){say('Geen geschikt doolhof gevonden. Druk op Nieuw doolhof.');return}
 special=new Map();const available=i=>i!==0&&i!==399&&!special.has(i);
 const place=(type,amount,pred=()=>true)=>{let opts=shuffle(Array.from({length:400},(_,i)=>i).filter(i=>available(i)&&pred(i)));for(let i of opts.slice(0,amount))special.set(i,{type})};
 ladder={...choice.l};special.set(ladder.from,{type:'ladder'});
@@ -61,7 +70,7 @@ function addDirected(a,b){if(a<0||b<0)return;let d=[0,1,2,3].find(k=>neighbor(a,
 for(let k=0;k<route.length-1;k++)addDirected(route[k],route[k+1]);
 function branchTo(target){if(target==null)return;let mainSet=new Set(route),walk=[target],seen=new Set([target]),cur=target;while(!mainSet.has(cur)){let opts=edges(cur).filter(v=>!seen.has(v));if(!opts.length)return;cur=opts[0];seen.add(cur);walk.push(cur)}walk.reverse();for(let j=0;j<walk.length-1;j++)addDirected(walk[j],walk[j+1])}
 if(trampoline)branchTo(trampoline.cell);
-if(ladder){branchTo(ladder.from);addDirected(ladder.from,ladder.to)}
+if(ladder){branchTo(ladder.from);if(ladder.dir>=0)addDirected(ladder.from,ladder.to)}
 // Ook alle overige doodlopende gangen krijgen zichtbare eenrichtingspijlen.
 // Loop vanuit elk eindpunt naar de hoofdroute; bestaande sluipwegen blijven intact.
 const mainCells=new Set(route);
@@ -86,7 +95,7 @@ players=[{pos:0,wait:0,name:'Jij'},{pos:0,wait:0,name:'Omnia'}];turn=0;steps=0;e
 function say(t){$('message').textContent=t}function update(){let p=players;for(let i=0;i<2;i++){$(i?'aPos':'pPos').textContent='Vak '+(p[i].pos+1);$(i?'aWait':'pWait').textContent=p[i].wait?' · '+p[i].wait+' beurt(en) wachten':''}$('turn').textContent=ended?'Einde':turn===0?'Jij':'Omnia';$('roll').disabled=ended||turn!==0||steps>0||lock;for(let b of document.querySelectorAll('[data-dir]')){let d=+b.dataset.dir;b.disabled=ended||turn!==0||steps<=0||lock||!canMove(players[0].pos,d)||rollVisited.has(neighbor(players[0].pos,d))}}function canMove(i,d){return !!(allowed&&allowed[i]&&allowed[i].includes(d))}function draw(){ctx.fillStyle='#f3efe6';ctx.fillRect(0,0,1000,1000);ctx.textAlign='center';ctx.textBaseline='middle';for(let i=0;i<400;i++){let[r,c]=rc(i),x=c*S,y=r*S;ctx.fillStyle=(r+c)%2?'#ece9df':'#f7f4ec';ctx.fillRect(x+1,y+1,S-2,S-2);if(i===0||i===399){ctx.fillStyle=i===0?'#b7dafa':'#b8e7b9';ctx.fillRect(x+4,y+4,S-8,S-8)}let type=special.get(i)?.type;const symbols={pit1:'🕳️',pit2:'🕳️',skull:'☠️',ladder:'🪜',trampoline:'🌀',pit3:'⚠️',again:'🎲',return:'↩️'};if(type){ctx.font='27px system-ui';ctx.fillText(symbols[type],x+25,y+26)}if(i===0||i===399){ctx.font='bold 12px system-ui';ctx.fillStyle='#18324a';ctx.fillText(i===0?'START':'FINISH',x+25,y+43)}}ctx.strokeStyle='#263a52';ctx.lineWidth=5;ctx.lineCap='square';ctx.beginPath();for(let i=0;i<400;i++){let[r,c]=rc(i),x=c*S,y=r*S;if(!cells[i][0]){ctx.moveTo(x,y);ctx.lineTo(x+S,y)}if(!cells[i][3]){ctx.moveTo(x,y);ctx.lineTo(x,y+S)}if(c===N-1&&!cells[i][1]){ctx.moveTo(x+S,y);ctx.lineTo(x+S,y+S)}if(r===N-1&&!cells[i][2]){ctx.moveTo(x,y+S);ctx.lineTo(x+S,y+S)}}ctx.stroke();
 // Kleine richtingpijlen in alle toegestane gangvakjes.
 ctx.save();ctx.strokeStyle='#4785a5';ctx.fillStyle='#4785a5';ctx.lineWidth=2;ctx.lineCap='round';
-for(let i=0;i<400;i++){let ds=allowed?.[i]||[];if(!ds.length)continue;let[r,c]=rc(i),cx=c*S+25,cy=r*S+25;for(let d of ds){let [dy,dx]=dirs[d],x=cx+dx*13,y=cy+dy*13;ctx.beginPath();ctx.moveTo(x-dx*5,y-dy*5);ctx.lineTo(x+dx*5,y+dy*5);ctx.stroke();ctx.beginPath();ctx.moveTo(x+dx*7,y+dy*7);ctx.lineTo(x+dx*7-dx*5-dy*4,y+dy*7-dy*5+dx*4);ctx.lineTo(x+dx*7-dx*5+dy*4,y+dy*7-dy*5-dx*4);ctx.closePath();ctx.fill()}}ctx.restore();if(ladder){let[r,c]=rc(ladder.from),x=c*S+25,y=r*S+25,dd=dirs[ladder.dir];ctx.strokeStyle='#e5a62f';ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+dd[1]*S,y+dd[0]*S);ctx.stroke()}players.forEach((p,i)=>{let[r,c]=rc(p.pos),x=c*S+25+(i?10:-10),y=r*S+25;ctx.beginPath();ctx.arc(x,y,13,0,Math.PI*2);ctx.fillStyle=i?'#f18b39':'#217bdb';ctx.fill();ctx.strokeStyle='white';ctx.lineWidth=3;ctx.stroke();ctx.fillStyle='white';ctx.font='bold 14px system-ui';ctx.fillText(i?'O':'K',x,y+1)})}
+for(let i=0;i<400;i++){let ds=allowed?.[i]||[];if(!ds.length)continue;let[r,c]=rc(i),cx=c*S+25,cy=r*S+25;for(let d of ds){let [dy,dx]=dirs[d],x=cx+dx*13,y=cy+dy*13;ctx.beginPath();ctx.moveTo(x-dx*5,y-dy*5);ctx.lineTo(x+dx*5,y+dy*5);ctx.stroke();ctx.beginPath();ctx.moveTo(x+dx*7,y+dy*7);ctx.lineTo(x+dx*7-dx*5-dy*4,y+dy*7-dy*5+dx*4);ctx.lineTo(x+dx*7-dx*5+dy*4,y+dy*7-dy*5-dx*4);ctx.closePath();ctx.fill()}}ctx.restore();if(ladder&&ladder.dir>=0){let[r,c]=rc(ladder.from),x=c*S+25,y=r*S+25,dd=dirs[ladder.dir];ctx.strokeStyle='#e5a62f';ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+dd[1]*S,y+dd[0]*S);ctx.stroke()}players.forEach((p,i)=>{let[r,c]=rc(p.pos),x=c*S+25+(i?10:-10),y=r*S+25;ctx.beginPath();ctx.arc(x,y,13,0,Math.PI*2);ctx.fillStyle=i?'#f18b39':'#217bdb';ctx.fill();ctx.strokeStyle='white';ctx.lineWidth=3;ctx.stroke();ctx.fillStyle='white';ctx.font='bold 14px system-ui';ctx.fillText(i?'O':'K',x,y+1)})}
 function effect(i){let p=players[turn],s=special.get(p.pos);if(!s)return false;switch(s.type){case 'pit1':p.wait=1;say(p.name+' viel in een valkuil: 1 beurt wachten!');break;case 'pit2':p.wait=2;say(p.name+' viel in de valkuil: 2 beurten wachten!');break;case 'pit3':p.wait=3;say(p.name+' zit in een diepe put: 3 beurten wachten!');break;case 'skull':p.pos=0;say('☠️ '+p.name+' moet helemaal terug naar de start!');break;case 'return':p.pos=s.to;say('↩️ '+p.name+' keert terug naar de splitsing op de hoofdroute!');draw();break;case 'again':extra=true;say('🎲 '+p.name+' krijgt na deze worp een extra worp!');break;case 'trampoline':{p.pos=trampoline&&p.pos===trampoline.cell?trampoline.landing:path(p.pos,399)[Math.min(20,path(p.pos,399).length-1)];say('🌀 '+p.name+' springt 20 vakjes vooruit!');draw();if(p.pos===399)win();return true}case 'ladder':p.pos=ladder.to;say('🪜 '+p.name+' klimt over de muur en wint '+ladder.gain+' vakjes!');draw();if(p.pos===399)win();return true}return false}
 function win(){ended=true;steps=0;say('🏆 '+players[turn].name+' wint het doolhofduel!');update();draw()}
 function move(d){if(ended||steps<=0||!canMove(players[turn].pos,d)||rollVisited.has(neighbor(players[turn].pos,d)))return false;let p=players[turn],was=p.pos;p.pos=neighbor(was,d);rollVisited.add(p.pos);steps--;if(p.pos===399){win();return true}let transported=steps===0?effect(p.pos):false;if(transported&&p.pos===399){win();return true}draw();update();if(!ended&&(steps===0||![0,1,2,3].some(d=>canMove(p.pos,d)&&!rollVisited.has(neighbor(p.pos,d))))){if(steps>0){steps=0;effect(p.pos);draw();update()}finish()}return true}
