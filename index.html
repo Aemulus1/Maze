@@ -64,38 +64,35 @@ special.set(trampoline.cell,{type:'trampoline'});
 // Traps on the approach, not on the landing; exact roll only.
 special.set(b[4],{type:'skull'});special.set(b[2],{type:'pit2'});
 place('pit1',9);place('pit3',3);place('skull',6);place('again',9);
-// Eénrichtingsnetwerk: hoofdroute vooruit, plus twee doelgerichte zijpaden.
+// Bouw alle pijlen vanuit één samenhangende boom, geworteld op de hoofdroute.
+// Elke zijtak loopt UITSLUITEND van de hoofdroute af: nooit tegengestelde pijlen.
 allowed=Array.from({length:400},()=>[]);
 function addDirected(a,b){if(a<0||b<0)return;let d=[0,1,2,3].find(k=>neighbor(a,k)===b);if(d!==undefined&&!allowed[a].includes(d))allowed[a].push(d)}
 for(let k=0;k<route.length-1;k++)addDirected(route[k],route[k+1]);
-function branchTo(target){if(target==null)return;let mainSet=new Set(route),walk=[target],seen=new Set([target]),cur=target;while(!mainSet.has(cur)){let opts=edges(cur).filter(v=>!seen.has(v));if(!opts.length)return;cur=opts[0];seen.add(cur);walk.push(cur)}walk.reverse();for(let j=0;j<walk.length-1;j++)addDirected(walk[j],walk[j+1])}
-if(trampoline)branchTo(trampoline.cell);
-if(ladder){branchTo(ladder.from);if(ladder.dir>=0)addDirected(ladder.from,ladder.to)}
-// Ook alle overige doodlopende gangen krijgen zichtbare eenrichtingspijlen.
-// Loop vanuit elk eindpunt naar de hoofdroute; bestaande sluipwegen blijven intact.
-const mainCells=new Set(route);
-for(let leaf=0;leaf<400;leaf++){
- if(mainCells.has(leaf)||edges(leaf).length!==1)continue;
- let walk=[leaf],previous=-1,current=leaf;
- while(!mainCells.has(current)){
-  const next=edges(current).find(v=>v!==previous);
-  if(next===undefined)break;
-  previous=current;current=next;walk.push(current);
+const mainCells=new Set(route),parent=Array(400).fill(-1),root=Array(400).fill(-1);
+const queue=[...route];
+for(let v of route){root[v]=v;parent[v]=v}
+for(let qi=0;qi<queue.length;qi++){
+ const u=queue[qi];
+ for(let v of edges(u)){
+  if(parent[v]!==-1)continue;
+  parent[v]=u;root[v]=root[u];queue.push(v);
+  addDirected(u,v);
  }
- if(!mainCells.has(current))continue;
- // Gewone doodlopende gangen krijgen een terugkeervak op het eindpunt.
- // De ladder- en trampolinegang behouden hun eigen eindvak en gevaren.
- if(available(leaf) && leaf!==ladder?.from && leaf!==trampoline?.cell){
-   special.set(leaf,{type:'return',to:current});
- }
- walk.reverse();
- for(let k=0;k<walk.length-1;k++)addDirected(walk[k],walk[k+1]);
 }
+// Alleen gewone uiteinden zijn terugkeervakjes. De bijzondere sluipwegen
+// houden hun eigen doel en speciale werking.
+const protectedCells=new Set([ladder?.from,trampoline?.cell]);
+for(let leaf=0;leaf<400;leaf++){
+ if(mainCells.has(leaf)||edges(leaf).length!==1||protectedCells.has(leaf))continue;
+ if(available(leaf))special.set(leaf,{type:'return',to:root[leaf]});
+}
+// Ladder over de muur blijft een aparte sprong; niet als gewone gangpijl.
 players=[{pos:0,wait:0,name:'Jij'},{pos:0,wait:0,name:'Omnia'}];turn=0;steps=0;extra=false;ended=false;lock=false;rollVisited=new Set();$('die').textContent='–';say('Gooi de dobbelsteen. Kies daarna je route.');update();draw()}
 function say(t){$('message').textContent=t}function update(){let p=players;for(let i=0;i<2;i++){$(i?'aPos':'pPos').textContent='Vak '+(p[i].pos+1);$(i?'aWait':'pWait').textContent=p[i].wait?' · '+p[i].wait+' beurt(en) wachten':''}$('turn').textContent=ended?'Einde':turn===0?'Jij':'Omnia';$('roll').disabled=ended||turn!==0||steps>0||lock;for(let b of document.querySelectorAll('[data-dir]')){let d=+b.dataset.dir;b.disabled=ended||turn!==0||steps<=0||lock||!canMove(players[0].pos,d)||rollVisited.has(neighbor(players[0].pos,d))}}function canMove(i,d){return !!(allowed&&allowed[i]&&allowed[i].includes(d))}function draw(){ctx.fillStyle='#f3efe6';ctx.fillRect(0,0,1000,1000);ctx.textAlign='center';ctx.textBaseline='middle';for(let i=0;i<400;i++){let[r,c]=rc(i),x=c*S,y=r*S;ctx.fillStyle=(r+c)%2?'#ece9df':'#f7f4ec';ctx.fillRect(x+1,y+1,S-2,S-2);if(i===0||i===399){ctx.fillStyle=i===0?'#b7dafa':'#b8e7b9';ctx.fillRect(x+4,y+4,S-8,S-8)}let type=special.get(i)?.type;const symbols={pit1:'🕳️',pit2:'🕳️',skull:'☠️',ladder:'🪜',trampoline:'🌀',pit3:'⚠️',again:'🎲',return:'↩️'};if(type){ctx.font='27px system-ui';ctx.fillText(symbols[type],x+25,y+26)}if(i===0||i===399){ctx.font='bold 12px system-ui';ctx.fillStyle='#18324a';ctx.fillText(i===0?'START':'FINISH',x+25,y+43)}}ctx.strokeStyle='#263a52';ctx.lineWidth=5;ctx.lineCap='square';ctx.beginPath();for(let i=0;i<400;i++){let[r,c]=rc(i),x=c*S,y=r*S;if(!cells[i][0]){ctx.moveTo(x,y);ctx.lineTo(x+S,y)}if(!cells[i][3]){ctx.moveTo(x,y);ctx.lineTo(x,y+S)}if(c===N-1&&!cells[i][1]){ctx.moveTo(x+S,y);ctx.lineTo(x+S,y+S)}if(r===N-1&&!cells[i][2]){ctx.moveTo(x,y+S);ctx.lineTo(x+S,y+S)}}ctx.stroke();
 // Kleine richtingpijlen in alle toegestane gangvakjes.
 ctx.save();ctx.strokeStyle='#4785a5';ctx.fillStyle='#4785a5';ctx.lineWidth=2;ctx.lineCap='round';
-for(let i=0;i<400;i++){let ds=allowed?.[i]||[];if(!ds.length)continue;let[r,c]=rc(i),cx=c*S+25,cy=r*S+25;for(let d of ds){let [dy,dx]=dirs[d],x=cx+dx*13,y=cy+dy*13;ctx.beginPath();ctx.moveTo(x-dx*5,y-dy*5);ctx.lineTo(x+dx*5,y+dy*5);ctx.stroke();ctx.beginPath();ctx.moveTo(x+dx*7,y+dy*7);ctx.lineTo(x+dx*7-dx*5-dy*4,y+dy*7-dy*5+dx*4);ctx.lineTo(x+dx*7-dx*5+dy*4,y+dy*7-dy*5-dx*4);ctx.closePath();ctx.fill()}}ctx.restore();if(ladder&&ladder.dir>=0){let[r,c]=rc(ladder.from),x=c*S+25,y=r*S+25,dd=dirs[ladder.dir];ctx.strokeStyle='#e5a62f';ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+dd[1]*S,y+dd[0]*S);ctx.stroke()}players.forEach((p,i)=>{let[r,c]=rc(p.pos),x=c*S+25+(i?10:-10),y=r*S+25;ctx.beginPath();ctx.arc(x,y,13,0,Math.PI*2);ctx.fillStyle=i?'#f18b39':'#217bdb';ctx.fill();ctx.strokeStyle='white';ctx.lineWidth=3;ctx.stroke();ctx.fillStyle='white';ctx.font='bold 14px system-ui';ctx.fillText(i?'O':'K',x,y+1)})}
+for(let i=0;i<400;i++){let ds=allowed?.[i]||[];if(!ds.length)continue;let[r,c]=rc(i),cx=c*S+(special.has(i)?36:25),cy=r*S+(special.has(i)?12:25);for(let d of ds){let [dy,dx]=dirs[d],x=cx+dx*13,y=cy+dy*13;ctx.beginPath();ctx.moveTo(x-dx*5,y-dy*5);ctx.lineTo(x+dx*5,y+dy*5);ctx.stroke();ctx.beginPath();ctx.moveTo(x+dx*7,y+dy*7);ctx.lineTo(x+dx*7-dx*5-dy*4,y+dy*7-dy*5+dx*4);ctx.lineTo(x+dx*7-dx*5+dy*4,y+dy*7-dy*5-dx*4);ctx.closePath();ctx.fill()}}ctx.restore();if(ladder&&ladder.dir>=0){let[r,c]=rc(ladder.from),x=c*S+25,y=r*S+25,dd=dirs[ladder.dir];ctx.strokeStyle='#e5a62f';ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+dd[1]*S,y+dd[0]*S);ctx.stroke()}players.forEach((p,i)=>{let[r,c]=rc(p.pos),x=c*S+25+(i?10:-10),y=r*S+25;ctx.beginPath();ctx.arc(x,y,13,0,Math.PI*2);ctx.fillStyle=i?'#f18b39':'#217bdb';ctx.fill();ctx.strokeStyle='white';ctx.lineWidth=3;ctx.stroke();ctx.fillStyle='white';ctx.font='bold 14px system-ui';ctx.fillText(i?'O':'K',x,y+1)})}
 function effect(i){let p=players[turn],s=special.get(p.pos);if(!s)return false;switch(s.type){case 'pit1':p.wait=1;say(p.name+' viel in een valkuil: 1 beurt wachten!');break;case 'pit2':p.wait=2;say(p.name+' viel in de valkuil: 2 beurten wachten!');break;case 'pit3':p.wait=3;say(p.name+' zit in een diepe put: 3 beurten wachten!');break;case 'skull':p.pos=0;say('☠️ '+p.name+' moet helemaal terug naar de start!');break;case 'return':p.pos=s.to;say('↩️ '+p.name+' keert terug naar de splitsing op de hoofdroute!');draw();break;case 'again':extra=true;say('🎲 '+p.name+' krijgt na deze worp een extra worp!');break;case 'trampoline':{p.pos=trampoline&&p.pos===trampoline.cell?trampoline.landing:path(p.pos,399)[Math.min(20,path(p.pos,399).length-1)];say('🌀 '+p.name+' springt 20 vakjes vooruit!');draw();if(p.pos===399)win();return true}case 'ladder':p.pos=ladder.to;say('🪜 '+p.name+' klimt over de muur en wint '+ladder.gain+' vakjes!');draw();if(p.pos===399)win();return true}return false}
 function win(){ended=true;steps=0;say('🏆 '+players[turn].name+' wint het doolhofduel!');update();draw()}
 function move(d){if(ended||steps<=0||!canMove(players[turn].pos,d)||rollVisited.has(neighbor(players[turn].pos,d)))return false;let p=players[turn],was=p.pos;p.pos=neighbor(was,d);rollVisited.add(p.pos);steps--;if(p.pos===399){win();return true}let transported=steps===0?effect(p.pos):false;if(transported&&p.pos===399){win();return true}draw();update();if(!ended&&(steps===0||![0,1,2,3].some(d=>canMove(p.pos,d)&&!rollVisited.has(neighbor(p.pos,d))))){if(steps>0){steps=0;effect(p.pos);draw();update()}finish()}return true}
