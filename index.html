@@ -29,11 +29,15 @@ function create(){
  const available=i=>i!==0&&i!==399&&!special.has(i);
  const spaced=(i,min=4)=>[...special.keys()].every(v=>Math.abs(rc(i)[0]-rc(v)[0])+Math.abs(rc(i)[1]-rc(v)[1])>=min);
  const place=(type,amount,pred=()=>true)=>{let opts=shuffle(Array.from({length:400},(_,i)=>i).filter(i=>available(i)&&pred(i)&&spaced(i)));for(const i of opts){if(amount<=0)break;if(available(i)&&spaced(i)){special.set(i,{type});amount--}}};
- // Vier zones, minstens twaalf routevakken uit elkaar en geen pijlen op start/finish.
- let choices=shuffle(Array.from({length:Math.max(0,route.length-16)},(_,j)=>j+8));
- for(const k of choices){if(dangerIndices.length>=4)break;if(k>=route.length-7)continue;if(dangerIndices.some(x=>Math.abs(x-k)<13))continue;
-  const i=route[k];if(!available(i)||!spaced(i,4))continue;
-  special.set(i,{type:['pit1','skull','pit3','skull'][dangerIndices.length]});dangerIndices.push(k);
+ // Gevaarlijke zones op de hoofdroute, maar niet vlak naast elkaar.
+ let choices=shuffle(Array.from({length:Math.max(0,route.length-15)},(_,j)=>j+7));
+ for(const k of choices){
+  if(dangerIndices.length>=4)break;
+  if(k>=route.length-7||dangerIndices.some(x=>Math.abs(x-k)<14))continue;
+  if(!available(route[k])||!spaced(route[k],3))continue;
+  // Geen overlap tussen de zes aanloopvakjes en geen ander object ertussen.
+  if(route.slice(k-6,k).some(i=>special.has(i)))continue;
+  special.set(route[k],{type:['skull','pit3','skull','pit1'][dangerIndices.length]});dangerIndices.push(k);
  }
  // Ladder blijft een optionele kortere verbinding over een muur.
  ladder=null;let ladderOpts=[];
@@ -43,7 +47,20 @@ function create(){
  if(ladderOpts.length){ladder=ladderOpts[rand(ladderOpts.length)];special.set(ladder.from,{type:'ladder'})}
  let tramp=shuffle(route.slice(8,-24).filter(i=>available(i)&&spaced(i,4)));
  if(tramp.length)special.set(tramp[0],{type:'trampoline'});
- place('pit1',3);place('skull',2);place('pit3',1);place('again',7);place('quiz',8);
+ // De hoofdroute krijgt prioriteit. Daarna pas de overige gangen.
+ const main=new Set(route),nearMain=new Set(route.flatMap(i=>[i,...edges(i)]));
+ const add=(type,n,priority)=>{
+  let candidates=shuffle(Array.from({length:400},(_,i)=>i).filter(i=>available(i)&&spaced(i,3)&&priority(i)));
+  for(const i of candidates){if(n<=0)break;if(available(i)&&spaced(i,3)){special.set(i,{type});n--}}
+  return n;
+ };
+ const counts={skull:5,pit1:8,pit3:4,quiz:4,again:5};
+ for(const type of ['skull','pit1','pit3','quiz','again']){
+  let n=counts[type]-[...special.values()].filter(v=>v.type===type).length;
+  // Extra gevaren in de buurt van de speelroutes, niet allemaal in uithoeken.
+  n=add(type,n,i=>nearMain.has(i)&&!route.slice(-7).includes(i));
+  if(n>0)n=add(type,n,i=>!route.slice(-7).includes(i));
+ }
  buildArrows();players=[{pos:0,wait:0,name:'Jij'},{pos:0,wait:0,name:'Omnia'}];turn=0;steps=0;extra=false;ended=false;lock=false;rollVisited=new Set();$('die').textContent='–';say('Gooi de dobbelsteen. Kies daarna je route.');update();draw();
 }
 function say(t){$('message').textContent=t}function update(){let p=players;for(let i=0;i<2;i++){$(i?'aPos':'pPos').textContent='Vak '+(p[i].pos+1);$(i?'aWait':'pWait').textContent=p[i].wait?' · '+p[i].wait+' beurt(en) wachten':''}$('turn').textContent=ended?'Einde':turn===0?'Jij':'Omnia';$('roll').disabled=ended||turn!==0||steps>0||lock;for(let b of document.querySelectorAll('[data-dir]')){let d=+b.dataset.dir;b.disabled=ended||turn!==0||steps<=0||lock||!canMove(players[0].pos,d)||rollVisited.has(neighbor(players[0].pos,d))}}function canMove(i,d){if(forced.has(i)&&forced.get(i)!==d)return false;return cells[i][d]||!!(ladder&&i===ladder.from&&d===ladder.dir)}function draw(){ctx.fillStyle='#f3efe6';ctx.fillRect(0,0,1000,1000);ctx.textAlign='center';ctx.textBaseline='middle';for(let i=0;i<400;i++){let[r,c]=rc(i),x=c*S,y=r*S;ctx.fillStyle=(r+c)%2?'#ece9df':'#f7f4ec';ctx.fillRect(x+1,y+1,S-2,S-2);if(i===0||i===399){ctx.fillStyle=i===0?'#b7dafa':'#b8e7b9';ctx.fillRect(x+4,y+4,S-8,S-8)}let type=special.get(i)?.type;const symbols={pit1:'🕳️',skull:'☠️',ladder:'🪜',trampoline:'🌀',pit3:'⚠️',again:'🎲',quiz:'❓'};if(type){ctx.font='27px system-ui';ctx.fillText(symbols[type],x+25,y+26)}if(forced.has(i)){ctx.fillStyle='#176ca5';ctx.font='bold 29px system-ui';ctx.fillText(['↑','→','↓','←'][forced.get(i)],x+25,y+25)}if(i===0||i===399){ctx.font='bold 12px system-ui';ctx.fillStyle='#18324a';ctx.fillText(i===0?'START':'FINISH',x+25,y+43)}}ctx.strokeStyle='#263a52';ctx.lineWidth=5;ctx.lineCap='square';ctx.beginPath();for(let i=0;i<400;i++){let[r,c]=rc(i),x=c*S,y=r*S;if(!cells[i][0]){ctx.moveTo(x,y);ctx.lineTo(x+S,y)}if(!cells[i][3]){ctx.moveTo(x,y);ctx.lineTo(x,y+S)}if(c===N-1&&!cells[i][1]){ctx.moveTo(x+S,y);ctx.lineTo(x+S,y+S)}if(r===N-1&&!cells[i][2]){ctx.moveTo(x,y+S);ctx.lineTo(x+S,y+S)}}ctx.stroke();if(ladder){let[r,c]=rc(ladder.from),x=c*S+25,y=r*S+25,dd=dirs[ladder.dir];ctx.strokeStyle='#e5a62f';ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+dd[1]*S,y+dd[0]*S);ctx.stroke()}players.forEach((p,i)=>{let[r,c]=rc(p.pos),x=c*S+25+(i?10:-10),y=r*S+25;ctx.beginPath();ctx.arc(x,y,13,0,Math.PI*2);ctx.fillStyle=i?'#f18b39':'#217bdb';ctx.fill();ctx.strokeStyle='white';ctx.lineWidth=3;ctx.stroke();ctx.fillStyle='white';ctx.font='bold 14px system-ui';ctx.fillText(i?'O':'K',x,y+1)})}
